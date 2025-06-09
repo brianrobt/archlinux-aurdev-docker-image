@@ -4,7 +4,14 @@ FROM archlinux/archlinux:latest
 
 # Update the system and install git (needed for some AUR helpers)
 RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm git sudo base-devel vim
+    pacman -S --noconfirm \
+    git \
+    sudo \
+    base-devel \
+    vim \
+    cmake \
+    ninja \
+    python-pip
 
 # Create a non-root user for building packages
 RUN useradd -m -G wheel builder && \
@@ -20,3 +27,11 @@ RUN git clone https://aur.archlinux.org/yay.git && \
     makepkg -si --noconfirm && \
     cd .. && \
     rm -rf yay
+
+RUN yay -S --noconfirm \
+    devtools \
+    rust \
+    paru \
+    python-pip \
+    tree \
+    treeify
