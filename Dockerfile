@@ -31,6 +31,7 @@ RUN git clone https://aur.archlinux.org/yay.git && \
 RUN yay -S --noconfirm \
     devtools \
     rust \
+    namcap \
     paru \
     python-pip \
     tree \
