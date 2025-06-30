@@ -11,7 +11,12 @@ RUN pacman -Syu --noconfirm && \
     vim \
     cmake \
     ninja \
-    python-pip
+    python-pip \
+    pacman-contrib \
+    wget
+
+RUN pacman -Sy archlinux-keyring --noconfirm && \
+    pacman -Su --noconfirm
 
 # Create a non-root user for building packages
 RUN useradd -m -G wheel builder && \
