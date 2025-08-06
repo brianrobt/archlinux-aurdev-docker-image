@@ -1,6 +1,9 @@
 name: Build and Publish Docker Image
 
 on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 4 * * *'
   push:
     branches: [ master, main ]
   pull_request:
