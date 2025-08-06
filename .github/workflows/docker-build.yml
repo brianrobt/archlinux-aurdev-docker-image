@@ -133,8 +133,8 @@ jobs:
         VERSION: ${{ steps.version.outputs.version }}
         DOCKERFILE_CHANGED: ${{ steps.changes.outputs.dockerfile }}
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --local user.email "brianrobt@pm.me"
+        git config --local user.name "Brian Thompson"
 
         # Create annotated tag with release notes
         if [ "$DOCKERFILE_CHANGED" == "true" ]; then
