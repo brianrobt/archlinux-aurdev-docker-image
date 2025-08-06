@@ -1,9 +1,18 @@
 # Use the official Arch Linux base image
-# FROM --platform=linux/arm64 archlinux/archlinux:latest for new Macs
 FROM archlinux/archlinux:latest
 
-# Update the system and install git (needed for some AUR helpers)
+# Set build arguments for cross-platform compatibility
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETARCH
+ARG TARGETOS
+
+
+
+# Update the system and install packages in a single RUN command to reduce layers
 RUN pacman -Syu --noconfirm && \
+    pacman -Sy archlinux-keyring --noconfirm && \
+    pacman -Su --noconfirm && \
     pacman -S --noconfirm \
     git \
     sudo \
@@ -13,14 +22,13 @@ RUN pacman -Syu --noconfirm && \
     ninja \
     python-pip \
     pacman-contrib \
-    wget
-
-RUN pacman -Sy archlinux-keyring --noconfirm && \
-    pacman -Su --noconfirm
+    wget && \
+    pacman -Scc --noconfirm
 
 # Create a non-root user for building packages
 RUN useradd -m -G wheel builder && \
-    echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+    echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers && \
+    chown -R builder:builder /home/builder
 
 # Switch to the builder user
 USER builder
@@ -29,7 +37,7 @@ WORKDIR /home/builder
 # Install yay (AUR helper)
 RUN git clone https://aur.archlinux.org/yay.git && \
     cd yay && \
-    makepkg -si --noconfirm && \
+    makepkg -si --noconfirm --skippgpcheck && \
     cd .. && \
     rm -rf yay
 
