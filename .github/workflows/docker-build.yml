@@ -141,9 +141,9 @@ jobs:
 
         # Create annotated tag with release notes
         if [ "$DOCKERFILE_CHANGED" == "true" ]; then
-          git tag -a "$VERSION" -m "Release $VERSION - Dockerfile changes
+          git tag -a "$VERSION" -m "Release $VERSION - Dockerfile changes"
         else
-          git tag -a "$VERSION" -m "Release $VERSION - Package updates
+          git tag -a "$VERSION" -m "Release $VERSION - Package updates"
         fi
         git push origin "$VERSION"
 
