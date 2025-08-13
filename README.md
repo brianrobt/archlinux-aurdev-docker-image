@@ -1,5 +1,7 @@
 # archlinux-aurdev-docker-image
 
+[![Build and Publish Docker Image](https://github.com/brianrobt/archlinux-aurdev-docker-image/actions/workflows/docker-build.yml/badge.svg)](https://github.com/brianrobt/archlinux-aurdev-docker-image/actions/workflows/docker-build.yml)
+
 Base Docker image for building, testing, &amp; publishing Arch packages to the AUR.
 
 ## Usage
