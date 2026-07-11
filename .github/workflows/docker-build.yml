@@ -179,16 +179,3 @@ jobs:
         echo "### Supported Architectures:" >> $GITHUB_STEP_SUMMARY
         echo "- linux/amd64" >> $GITHUB_STEP_SUMMARY
         echo "- linux/arm64" >> $GITHUB_STEP_SUMMARY
-
-  # Prune version tags older than 14 days on Hub + GHCR after a successful publish.
-  # PRs never publish and never reach this job (needs: build + non-PR gate).
-  cleanup:
-    needs: build
-    if: github.event_name != 'pull_request' && needs.build.result == 'success'
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/registry-cleanup.yml
-    with:
-      dry_run: false
-    secrets: inherit

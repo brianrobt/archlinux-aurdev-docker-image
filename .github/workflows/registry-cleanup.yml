@@ -11,13 +11,6 @@ on:
         required: false
         type: boolean
         default: true
-  workflow_call:
-    inputs:
-      dry_run:
-        description: 'Log keep/delete sets without deleting'
-        required: false
-        type: boolean
-        default: false
 
 env:
   RETENTION_DAYS: '14'
@@ -39,9 +32,10 @@ jobs:
       - name: Resolve dry-run mode
         id: mode
         run: |
-          # workflow_dispatch / workflow_call provide inputs.dry_run; schedule does not.
-          DRY='${{ inputs.dry_run }}'
-          if [ -z "$DRY" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DRY='${{ inputs.dry_run }}'
+          else
+            # Scheduled runs are live deletes.
             DRY=false
           fi
           echo "dry_run=$DRY" >> "$GITHUB_OUTPUT"

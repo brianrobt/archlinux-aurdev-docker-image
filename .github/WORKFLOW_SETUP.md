@@ -39,16 +39,29 @@ The workflow can be triggered manually via the "Actions" tab → "Build and Publ
 
 ## Registry tag retention
 
-Version tags older than **14 days** (by last push) are deleted from Docker Hub and GHCR after each successful publish and on a weekly schedule (Sunday 05:00 UTC).
+Cleanup is a **separate** workflow (`.github/workflows/registry-cleanup.yml`), not part of the image build.
 
-Forever tags (never deleted by age): `latest`, `master`, `main`.
+Version tags older than **14 days** (by last push) are deleted from Docker Hub and GHCR on a weekly schedule (Sunday 05:00 UTC) or via manual `workflow_dispatch`.
+
+Default protected tags (never deleted by age unless you override `PROTECTED_TAGS`): `latest`, `master`, `main`.
 
 ### Token requirements for cleanup
 - **Docker Hub:** `DOCKERHUB_TOKEN` must include **Delete** (Read/Write/Delete). Write-only tokens can publish but will fail cleanup.
 - **GHCR:** Uses `GITHUB_TOKEN` with `packages: write`. The workflow must have Admin access on the package (default when this repo publishes it).
 
 ### Dry-run
-Actions → **Registry Tag Cleanup** → Run workflow → leave **dry_run** enabled to list keep/delete sets without deleting.
+Actions → **Registry Tag Cleanup** → Run workflow → leave **dry_run** enabled (default) to list keep/delete sets without deleting.
+
+Local dry-run (requires Hub + GitHub credentials):
+
+```bash
+cd scripts
+DRY_RUN=true \
+  DOCKERHUB_USERNAME=brianrobt \
+  DOCKERHUB_TOKEN=... \
+  GITHUB_TOKEN="$(gh auth token)" \
+  python3 cleanup_registry_tags.py
+```
 
 ### Configuration knobs
 Set in `.github/workflows/registry-cleanup.yml` (or override via job env):

@@ -35,7 +35,23 @@ def env_bool(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name)
     if raw is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean (got {raw!r})")
+
+
+def parse_retention_days(raw: str | None) -> int:
+    text = str(DEFAULT_RETENTION_DAYS if raw is None else raw).strip()
+    try:
+        days = int(text)
+    except ValueError as exc:
+        raise ValueError(f"RETENTION_DAYS must be an integer (got {text!r})") from exc
+    if days < 0:
+        raise ValueError(f"RETENTION_DAYS must be >= 0 (got {days})")
+    return days
 
 
 def parse_protected_tags(raw: str | None) -> frozenset[str]:
@@ -353,9 +369,13 @@ def log_actions(result: RegistryResult) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _ = argv
-    retention_days = int(os.environ.get("RETENTION_DAYS", str(DEFAULT_RETENTION_DAYS)))
+    try:
+        retention_days = parse_retention_days(os.environ.get("RETENTION_DAYS"))
+        dry_run = env_bool("DRY_RUN", False)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     protected = parse_protected_tags(os.environ.get("PROTECTED_TAGS"))
-    dry_run = env_bool("DRY_RUN", False)
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
     print(

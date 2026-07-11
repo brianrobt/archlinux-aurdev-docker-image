@@ -23,9 +23,9 @@ execution: code
 
 ### Summary
 
-Keep `latest`, `master`, and `main` indefinitely.
+Keep `latest`, `master`, and `main` by default (via configurable `PROTECTED_TAGS`).
 Delete every other tag on Docker Hub and GHCR whose last push is older than 14 days.
-Run that cleanup after every successful publish and on a weekly schedule.
+Run cleanup from a **standalone** workflow on a weekly schedule and manual `workflow_dispatch` (not coupled to the image build).
 
 ### Problem Frame
 
@@ -39,7 +39,7 @@ AUR packages may still pin older tags, but an allowlist or AUR discovery pass is
 - **14-day window.** Aggressive cleanup; roughly two weeks of daily version tags remain at steady state.
 - **Protected floating tags.** `latest`, `master`, and `main` are never deleted by age.
 - **Both registries.** Docker Hub (`brianrobt/archlinux-aur-dev`) and GHCR (`ghcr.io/brianrobt/archlinux-aurdev-docker-image`) share the same policy.
-- **Publish + weekly.** Cleanup runs after each successful non-PR publish and on a weekly sweep so missed runs still prune.
+- **Standalone cleanup workflow.** Cleanup lives in its own Actions workflow (weekly + manual), separate from build/publish, so publish failures and reusable-workflow permission coupling cannot block image builds.
 
 ### Requirements
 
@@ -51,9 +51,9 @@ AUR packages may still pin older tags, but an allowlist or AUR discovery pass is
 
 **When cleanup runs**
 
-- R4. After every successful publish on the default branch (when new tags are pushed), cleanup runs against both registries.
-- R5. A weekly scheduled job also runs the same cleanup against both registries.
-- R6. Pull requests and failed publishes do not run cleanup.
+- R4. A dedicated registry-cleanup workflow runs on a weekly schedule against both registries.
+- R5. The same workflow can be triggered manually (`workflow_dispatch`), with an optional dry-run mode.
+- R6. The image build/publish workflow does not invoke cleanup.
 
 **Safety and observability**
 
@@ -63,17 +63,17 @@ AUR packages may still pin older tags, but an allowlist or AUR discovery pass is
 
 ### Key Flows
 
-- F1. Post-publish cleanup
-  - **Trigger:** Successful default-branch publish of version + floating tags.
-  - **Steps:** List tags on Docker Hub and GHCR; apply R1–R3; delete eligible tags; report results.
-  - **Outcome:** Registries retain protected tags plus version tags pushed within 14 days.
-  - **Covered by:** R1–R4, R6–R8
+- F1. Manual dry-run or live cleanup
+  - **Trigger:** `workflow_dispatch` on the registry-cleanup workflow.
+  - **Steps:** List tags on Docker Hub and GHCR; apply R1–R3; delete eligible tags (or log would-delete when dry-run); report results.
+  - **Outcome:** Operator can preview or apply retention without waiting for the weekly cron.
+  - **Covered by:** R1–R3, R5, R7–R9
 
 - F2. Weekly sweep
   - **Trigger:** Weekly schedule.
-  - **Steps:** Same evaluation and deletion as F1, independent of a new publish.
-  - **Outcome:** Tags that aged past 14 days since the last publish are still pruned.
-  - **Covered by:** R1–R3, R5, R7–R8
+  - **Steps:** Same evaluation and deletion as F1 in live mode.
+  - **Outcome:** Tags that aged past 14 days are pruned without coupling to publish.
+  - **Covered by:** R1–R4, R7–R8
 
 ### Acceptance Examples
 
@@ -95,11 +95,11 @@ AUR packages may still pin older tags, but an allowlist or AUR discovery pass is
   - **When:** Cleanup runs
   - **Then:** `v1.4.325` is kept
 
-- AE4. PR build
+- AE4. Image build workflow
   - **Covers:** R6
-  - **Given:** A pull request triggers the build workflow
+  - **Given:** The build/publish workflow runs (including on pull requests)
   - **When:** The workflow finishes
-  - **Then:** No registry cleanup runs
+  - **Then:** No registry cleanup job is invoked from that workflow
 
 ### Scope Boundaries
 
@@ -130,13 +130,13 @@ AUR packages may still pin older tags, but an allowlist or AUR discovery pass is
 - **KTD1. One stdlib Python script for both registries.** Prefer `scripts/cleanup_registry_tags.py` over composing Hub + GHCR marketplace actions so retention math, protected-tag rules, dry-run, and logging stay identical (R7–R9). No new pip dependencies.
 - **KTD2. Docker Hub deletes by tag name.** Authenticate with Hub login JWT from `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN`; list via Hub tags API using `tag_last_pushed`; `DELETE /v2/repositories/{ns}/{repo}/tags/{tag}/`. Avoid blind digest GC that can break multi-arch indexes.
 - **KTD3. GHCR deletes by package version id.** List `GET /user/packages/container/{package}/versions`; delete `DELETE .../versions/{id}`. Skip any version that still carries a protected tag. Age GHCR versions with `updated_at` (fallback `created_at`) as the push-age proxy — GHCR has no `tag_last_pushed`.
-- **KTD4. Shared cleanup job, two triggers.** Reusable job/workflow path: (1) `needs: build` after successful non-PR publish in `.github/workflows/docker-build.yml`; (2) weekly cron Sunday `05:00` UTC plus `workflow_dispatch` with optional `dry_run` input. Separate small workflow that calls the same script is acceptable if wiring `needs` is awkward — same script and env contract either way.
-- **KTD5. Dry-run is operator-controlled, live by default.** `DRY_RUN=true` / `workflow_dispatch` input prints keep/delete sets without calling delete APIs. Scheduled and post-publish runs default to live deletes (product accepted the first ~260-tag purge). Document Hub PAT **Delete** scope in `.github/WORKFLOW_SETUP.md`.
+- **KTD4. Standalone cleanup workflow.** `.github/workflows/registry-cleanup.yml` only — weekly cron Sunday `05:00` UTC plus `workflow_dispatch` with `dry_run` (default true for manual). Do not call it from `docker-build.yml`.
+- **KTD5. Dry-run is operator-controlled; schedule is live.** Manual runs default to dry-run; scheduled runs delete. Document Hub PAT **Delete** scope in `.github/WORKFLOW_SETUP.md`.
 
 ### High-level design
 
 ```text
-[build success | weekly cron | workflow_dispatch]
+[weekly cron | workflow_dispatch]
         |
         v
 cleanup_registry_tags.py
@@ -158,7 +158,7 @@ Config via env (R9): `RETENTION_DAYS` (default 14), `PROTECTED_TAGS` (default `l
 ### Sequencing
 
 1. U1 — cleanup script + unit tests (policy pure functions)
-2. U2 — wire GitHub Actions (post-publish + weekly + dry-run)
+2. U2 — wire standalone GitHub Actions workflow (weekly + dry-run dispatch)
 3. U3 — operator docs (token scopes, how to dry-run)
 
 ### Risks
@@ -185,15 +185,15 @@ Config via env (R9): `RETENTION_DAYS` (default 14), `PROTECTED_TAGS` (default `l
 
 ### U2. GitHub Actions wiring
 
-- **Goal:** Run cleanup after successful publishes and weekly, never on PRs.
+- **Goal:** Run cleanup weekly and on demand from a standalone workflow, never from the image build.
 - **Requirements:** R4–R8
-- **Files:** `.github/workflows/docker-build.yml` and/or `.github/workflows/registry-cleanup.yml`
-- **Approach:** After `build` succeeds on non-PR default-branch pushes/schedules that published, run cleanup job with secrets. Add weekly-only trigger path. Expose `dry_run` boolean on `workflow_dispatch`. Permissions: `packages: write` (and `contents: read` if checkout needed). Checkout repo for script. Fail the job if the script exits non-zero.
+- **Files:** `.github/workflows/registry-cleanup.yml` (not `docker-build.yml`)
+- **Approach:** Weekly cron + `workflow_dispatch` with `dry_run`. Permissions: `packages: write` and `contents: read`. Checkout repo for script. Fail the job if the script exits non-zero.
 - **Test scenarios:**
-  - Workflow YAML conditions exclude `pull_request`.
+  - Image build workflow has no cleanup job.
   - Manual dry-run input maps to `DRY_RUN=true`.
-  - Post-publish job `needs: build` and skips when build skipped/failed.
-- **Verification:** YAML review + local dry-run of script against Hub list (read-only) if credentials available; otherwise unittest coverage of condition helpers and workflow condition comments in PR.
+  - Schedule uses live deletes.
+- **Verification:** YAML review + local dry-run of script against Hub/GHCR when credentials available.
 - **Dependencies:** U1
 
 ### U3. Operator documentation
@@ -203,22 +203,22 @@ Config via env (R9): `RETENTION_DAYS` (default 14), `PROTECTED_TAGS` (default `l
 - **Files:** `.github/WORKFLOW_SETUP.md`, brief note in `README.md` if it already documents publishing
 - **Approach:** Extend existing workflow setup doc; do not invent a new top-level doc.
 - **Test scenarios:** N/A (docs)
-- **Verification:** Doc mentions Hub Delete scope, env knobs, and how to run dry-run via Actions UI.
+- **Verification:** Doc mentions Hub Delete scope, env knobs, and how to run dry-run via Actions UI or locally.
 - **Dependencies:** U2
 
 ## Verification Contract
 
 | Gate | Command / check | Applies to |
 |------|-----------------|------------|
-| Unit tests | `python3 -m unittest scripts.test_cleanup_registry_tags` (adjust path to match U1 layout) | U1 |
-| Workflow conditions | Confirm cleanup jobs gated off `pull_request` | U2 |
-| Manual dry-run | `workflow_dispatch` with `dry_run: true` after merge (operator) | U2, live registries |
-| Live cleanup | First non-dry scheduled/post-publish run deletes aged tags; protected tags remain | F1/F2 |
+| Unit tests | `cd scripts && python3 -m unittest test_cleanup_registry_tags` | U1 |
+| Workflow isolation | Confirm `docker-build.yml` does not call cleanup | U2 |
+| Manual dry-run | Local script or Actions `dry_run: true` | U2, live registries |
+| Live cleanup | First non-dry weekly/manual run deletes aged tags; protected tags remain | F1/F2 |
 
 ## Definition of Done
 
 - [ ] U1 script merges with passing unit tests for protected/age/GHCR mixed-tag cases
-- [ ] U2 runs cleanup after successful non-PR publish and on weekly cron
+- [ ] U2 standalone weekly + dispatch workflow (no build coupling)
 - [ ] U3 documents Hub Delete token scope and dry-run
 - [ ] R1–R9 satisfied; AE1–AE4 covered by tests and/or workflow conditions
 - [ ] PR opened with summary of retention policy and expected first-run deletion volume
