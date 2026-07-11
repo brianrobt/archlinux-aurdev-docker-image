@@ -4,6 +4,8 @@
 
 Base Docker image for building, testing, &amp; publishing Arch packages to the AUR.
 
+Published tags older than 14 days (except `latest` / `master` / `main`) are pruned automatically from Docker Hub and GHCR. See [`.github/WORKFLOW_SETUP.md`](.github/WORKFLOW_SETUP.md) for retention details and dry-run instructions.
+
 ## Usage
 
 The following is a sample Dockerfile that could be used to test the `python-conda` AUR package.
