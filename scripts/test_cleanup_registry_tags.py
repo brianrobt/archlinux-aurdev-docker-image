@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -66,9 +67,24 @@ class PolicyTests(unittest.TestCase):
 
     def test_parse_timestamp_fractional(self) -> None:
         dt = parse_timestamp("2026-07-10T22:52:31.696215341Z")
-        self.assertIsNotNone(dt)
-        assert dt is not None
-        self.assertEqual(dt.tzinfo, timezone.utc)
+        self.assertEqual(
+            dt,
+            datetime(2026, 7, 10, 22, 52, 31, 696215, tzinfo=timezone.utc),
+        )
+
+    def test_parse_retention_days_rejects_negative(self) -> None:
+        from cleanup_registry_tags import parse_retention_days
+
+        with self.assertRaises(ValueError):
+            parse_retention_days("-1")
+
+    def test_env_bool_rejects_garbage(self) -> None:
+        from cleanup_registry_tags import env_bool
+
+        with mock.patch.dict(os.environ, {"DRY_RUN": "maybe"}, clear=False):
+            with self.assertRaises(ValueError):
+                env_bool("DRY_RUN")
+
 
 
 class CleanupDryRunTests(unittest.TestCase):
