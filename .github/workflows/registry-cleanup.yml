@@ -1,0 +1,52 @@
+name: Registry Tag Cleanup
+
+on:
+  schedule:
+    # Weekly sweep (Sunday 05:00 UTC), after daily image builds at 04:00.
+    - cron: '0 5 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Log keep/delete sets without deleting'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  RETENTION_DAYS: '14'
+  PROTECTED_TAGS: 'latest,master,main'
+  DOCKERHUB_NAMESPACE: brianrobt
+  DOCKERHUB_REPOSITORY: archlinux-aur-dev
+  GHCR_PACKAGE: archlinux-aurdev-docker-image
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve dry-run mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DRY='${{ inputs.dry_run }}'
+          else
+            # Scheduled runs are live deletes.
+            DRY=false
+          fi
+          echo "dry_run=$DRY" >> "$GITHUB_OUTPUT"
+          echo "Resolved DRY_RUN=$DRY (event=${{ github.event_name }})"
+
+      - name: Clean Docker Hub and GHCR tags
+        env:
+          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/cleanup_registry_tags.py
